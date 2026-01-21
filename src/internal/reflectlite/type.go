@@ -758,6 +758,34 @@ func (t *RawType) FieldAlign() int {
 	return t.Align()
 }
 
+func (t *RawType) implements(u *RawType) bool {
+	if u.Kind() != Interface {
+		panic("reflect: non-interface type passed to Type.Implements")
+	}
+	if u.NumMethod() == 0 {
+		return true
+	}
+	tms := t.methodSet()
+	ums := u.methodSet()
+	if tms == nil || ums == nil {
+		return false
+	}
+	tSigs := tms.signatures()
+	for _, need := range ums.signatures() {
+		found := false
+		for _, have := range tSigs {
+			if have == need {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 // AssignableTo returns whether a value of type t can be assigned to a variable
 // of type u.
 func (t *RawType) AssignableTo(u Type) bool {
@@ -769,12 +797,8 @@ func (t *RawType) AssignableTo(u Type) bool {
 		return true
 	}
 
-	if u.Kind() == Interface && u.NumMethod() == 0 {
-		return true
-	}
-
 	if u.Kind() == Interface {
-		panic("reflect: unimplemented: AssignableTo with interface")
+		return t.implements(u.(*RawType))
 	}
 	return false
 }
@@ -783,7 +807,7 @@ func (t *RawType) Implements(u Type) bool {
 	if u.Kind() != Interface {
 		panic("reflect: non-interface type passed to Type.Implements")
 	}
-	return t.AssignableTo(u)
+	return t.implements(u.(*RawType))
 }
 
 // Comparable returns whether values of this type can be compared to each other.
