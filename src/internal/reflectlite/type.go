@@ -162,6 +162,18 @@ type RawType struct {
 	meta uint8 // metadata byte, contains kind and flags (see constants above)
 }
 
+type methodSet struct {
+	numMethods uintptr
+	methods    [1]*byte
+}
+
+func (ms *methodSet) signatures() []*byte {
+	if ms == nil || ms.numMethods == 0 {
+		return nil
+	}
+	return unsafe.Slice(&ms.methods[0], int(ms.numMethods))
+}
+
 // All types that have an element type: named, chan, slice, array, map (but not
 // pointer because it doesn't have ptrTo).
 type elemType struct {
@@ -175,11 +187,13 @@ type ptrType struct {
 	RawType
 	numMethod uint16
 	elem      *RawType
+	methodSet *methodSet
 }
 
 type interfaceType struct {
 	RawType
-	ptrTo *RawType
+	ptrTo     *RawType
+	methodSet *methodSet
 	// TODO: methods
 }
 
@@ -204,6 +218,7 @@ type namedType struct {
 	RawType
 	numMethod uint16
 	ptrTo     *RawType
+	methodSet *methodSet
 	elem      *RawType
 	pkg       *byte
 	name      [1]byte
@@ -238,6 +253,19 @@ func (t *RawType) underlying() *RawType {
 		return (*elemType)(unsafe.Pointer(t)).elem
 	}
 	return t
+}
+
+func (t *RawType) methodSet() *methodSet {
+	if t.isNamed() {
+		return (*namedType)(unsafe.Pointer(t)).methodSet
+	}
+	switch t.Kind() {
+	case Pointer:
+		return (*ptrType)(unsafe.Pointer(t)).methodSet
+	case Interface:
+		return (*interfaceType)(unsafe.Pointer(t)).methodSet
+	}
+	return nil
 }
 
 func (t *RawType) ptrtag() uintptr {
@@ -791,8 +819,10 @@ func (t *RawType) NumMethod() int {
 	case Struct:
 		return int((*structType)(unsafe.Pointer(t)).numMethod)
 	case Interface:
-		//FIXME: Use len(methods)
-		return (*interfaceType)(unsafe.Pointer(t)).ptrTo.NumMethod()
+		if ms := (*interfaceType)(unsafe.Pointer(t)).methodSet; ms != nil {
+			return int(ms.numMethods)
+		}
+		return 0
 	}
 
 	// Other types have no methods attached.  Note we don't panic here.

@@ -23,6 +23,7 @@
 //     meta         uint8
 //     nmethods     uint16
 //     elementType  *typeStruct
+//     methodSet    *methodSet
 // - array types (see arrayType)
 //     meta         uint8
 //     nmethods     uint16 (0)
@@ -47,6 +48,7 @@
 // - interface types (this is missing the interface methods):
 //     meta         uint8
 //     ptrTo        *typeStruct
+//     methodSet    *methodSet
 // - signature types (this is missing input and output parameters):
 //     meta         uint8
 //     ptrTo        *typeStruct
@@ -54,6 +56,7 @@
 //     meta         uint8
 //     nmethods     uint16      // number of methods
 //     ptrTo        *typeStruct
+//     methodSet    *methodSet
 //     elem         *typeStruct // underlying type
 //     pkgpath      *byte       // pkgpath; null terminated
 //     name         [1]byte     // actual name; null terminated

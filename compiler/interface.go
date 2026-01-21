@@ -197,6 +197,7 @@ func (c *compilerContext) getTypeCode(typ types.Type) llvm.Value {
 			typeFieldTypes = append(typeFieldTypes,
 				types.NewVar(token.NoPos, nil, "numMethods", types.Typ[types.Uint16]),
 				types.NewVar(token.NoPos, nil, "ptrTo", types.Typ[types.UnsafePointer]),
+				types.NewVar(token.NoPos, nil, "methodSet", types.Typ[types.UnsafePointer]),
 				types.NewVar(token.NoPos, nil, "underlying", types.Typ[types.UnsafePointer]),
 				types.NewVar(token.NoPos, nil, "pkgpath", types.Typ[types.UnsafePointer]),
 				types.NewVar(token.NoPos, nil, "name", types.NewArray(types.Typ[types.Int8], int64(len(pkgname)+1+len(name)+1))),
@@ -217,6 +218,7 @@ func (c *compilerContext) getTypeCode(typ types.Type) llvm.Value {
 			typeFieldTypes = append(typeFieldTypes,
 				types.NewVar(token.NoPos, nil, "numMethods", types.Typ[types.Uint16]),
 				types.NewVar(token.NoPos, nil, "elementType", types.Typ[types.UnsafePointer]),
+				types.NewVar(token.NoPos, nil, "methodSet", types.Typ[types.UnsafePointer]),
 			)
 		case *types.Array:
 			typeFieldTypes = append(typeFieldTypes,
@@ -245,6 +247,7 @@ func (c *compilerContext) getTypeCode(typ types.Type) llvm.Value {
 		case *types.Interface:
 			typeFieldTypes = append(typeFieldTypes,
 				types.NewVar(token.NoPos, nil, "ptrTo", types.Typ[types.UnsafePointer]),
+				types.NewVar(token.NoPos, nil, "methodSet", types.Typ[types.UnsafePointer]),
 			)
 			// TODO: methods
 		case *types.Signature:
@@ -261,7 +264,7 @@ func (c *compilerContext) getTypeCode(typ types.Type) llvm.Value {
 			// likely be optimized in LLVM using
 			// https://llvm.org/docs/TypeMetadata.html.
 			typeFieldTypes = append([]*types.Var{
-				types.NewVar(token.NoPos, nil, "methodSet", types.Typ[types.UnsafePointer]),
+				types.NewVar(token.NoPos, nil, "typeMethodSet", types.Typ[types.UnsafePointer]),
 			}, typeFieldTypes...)
 		}
 		globalType := types.NewStruct(typeFieldTypes, nil)
@@ -295,6 +298,7 @@ func (c *compilerContext) getTypeCode(typ types.Type) llvm.Value {
 			typeFields = []llvm.Value{
 				llvm.ConstInt(c.ctx.Int16Type(), uint64(numMethods), false), // numMethods
 				c.getTypeCode(types.NewPointer(typ)),                        // ptrTo
+				c.getReflectMethodSet(typ),                                  // methodSet
 				c.getTypeCode(typ.Underlying()),                             // underlying
 				pkgPathPtr,                                                  // pkgpath pointer
 				c.ctx.ConstString(pkgname+"."+name+"\x00", false),           // name
@@ -326,6 +330,7 @@ func (c *compilerContext) getTypeCode(typ types.Type) llvm.Value {
 			typeFields = []llvm.Value{
 				llvm.ConstInt(c.ctx.Int16Type(), uint64(numMethods), false), // numMethods
 				c.getTypeCode(typ.Elem()),
+				c.getReflectMethodSet(typ), // methodSet
 			}
 		case *types.Array:
 			typeFields = []llvm.Value{
@@ -408,7 +413,10 @@ func (c *compilerContext) getTypeCode(typ types.Type) llvm.Value {
 			}
 			typeFields = append(typeFields, llvm.ConstArray(structFieldType, fields))
 		case *types.Interface:
-			typeFields = []llvm.Value{c.getTypeCode(types.NewPointer(typ))}
+			typeFields = []llvm.Value{
+				c.getTypeCode(types.NewPointer(typ)),
+				c.getReflectMethodSet(typ),
+			}
 			// TODO: methods
 		case *types.Signature:
 			typeFields = []llvm.Value{c.getTypeCode(types.NewPointer(typ))}
@@ -643,6 +651,30 @@ func (c *compilerContext) getTypeMethodSet(typ types.Type) llvm.Value {
 		global.SetLinkage(llvm.LinkOnceODRLinkage)
 	}
 	return global
+}
+
+// getReflectMethodSet returns a pointer to a compact method set for runtime
+// reflection (AssignableTo/Implements). It is distinct from the compile-time
+// method set used during interface lowering.
+func (c *compilerContext) getReflectMethodSet(typ types.Type) llvm.Value {
+	ms := c.program.MethodSets.MethodSet(typ)
+	if ms.Len() == 0 {
+		return llvm.ConstNull(c.dataPtrType)
+	}
+	signatures := make([]llvm.Value, ms.Len())
+	for i := 0; i < ms.Len(); i++ {
+		signatures[i] = c.getMethodSignature(ms.At(i).Obj().(*types.Func))
+	}
+	array := llvm.ConstArray(c.dataPtrType, signatures)
+	globalValue := c.ctx.ConstStruct([]llvm.Value{
+		llvm.ConstInt(c.uintptrType, uint64(ms.Len()), false),
+		array,
+	}, false)
+	global := llvm.AddGlobal(c.mod, globalValue.Type(), "reflect/types.methodset:"+typ.String())
+	global.SetInitializer(globalValue)
+	global.SetLinkage(llvm.LinkOnceODRLinkage)
+	global.SetGlobalConstant(true)
+	return llvm.ConstBitCast(global, c.dataPtrType)
 }
 
 // getMethodSignatureName returns a unique name (that can be used as the name of
