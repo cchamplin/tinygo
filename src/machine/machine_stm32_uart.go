@@ -1,8 +1,8 @@
-//go:build stm32
+//go:build stm32 && !stm32g0
 
 package machine
 
-// Peripheral abstraction layer for UARTs on the stm32 family.
+// Peripheral abstraction layer for UARTs on the stm32 family (except stm32g0).
 
 import (
 	"device/stm32"
