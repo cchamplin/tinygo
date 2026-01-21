@@ -250,7 +250,7 @@ type structField struct {
 // the underlying type, else just return the type itself.
 func (t *RawType) underlying() *RawType {
 	if t.isNamed() {
-		return (*elemType)(unsafe.Pointer(t)).elem
+		return (*namedType)(unsafe.Pointer(t)).elem
 	}
 	return t
 }
@@ -295,7 +295,7 @@ func PointerTo(t Type) Type {
 
 func pointerTo(t *RawType) *RawType {
 	if t.isNamed() {
-		return (*elemType)(unsafe.Pointer(t)).ptrTo
+		return (*namedType)(unsafe.Pointer(t)).ptrTo
 	}
 
 	switch t.Kind() {
