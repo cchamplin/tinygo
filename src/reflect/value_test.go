@@ -626,6 +626,55 @@ func TestAssignableTo(t *testing.T) {
 	}
 }
 
+type assignIface1 interface {
+	M() int
+}
+
+type assignIface2 interface {
+	M() int
+	N()
+}
+
+type assignImpl struct{}
+
+func (assignImpl) M() int { return 1 }
+func (assignImpl) N()     {}
+
+type assignPtrOnly struct{}
+
+func (*assignPtrOnly) M() int { return 1 }
+
+func TestAssignableToInterfaceMethods(t *testing.T) {
+	iface1 := TypeFor[assignIface1]()
+	iface2 := TypeFor[assignIface2]()
+	impl := TypeFor[assignImpl]()
+	ptrImpl := TypeFor[*assignPtrOnly]()
+	ptrImplVal := TypeFor[assignPtrOnly]()
+	empty := TypeFor[interface{}]()
+
+	if !impl.AssignableTo(iface1) {
+		t.Fatalf("assignImpl should be assignable to assignIface1")
+	}
+	if !impl.AssignableTo(iface2) {
+		t.Fatalf("assignImpl should be assignable to assignIface2")
+	}
+	if !iface2.AssignableTo(iface1) {
+		t.Fatalf("assignIface2 should be assignable to assignIface1")
+	}
+	if iface1.AssignableTo(iface2) {
+		t.Fatalf("assignIface1 should NOT be assignable to assignIface2")
+	}
+	if !ptrImpl.AssignableTo(iface1) {
+		t.Fatalf("*assignPtrOnly should be assignable to assignIface1")
+	}
+	if ptrImplVal.AssignableTo(iface1) {
+		t.Fatalf("assignPtrOnly value should NOT be assignable to assignIface1")
+	}
+	if empty.AssignableTo(iface1) {
+		t.Fatalf("empty interface should NOT be assignable to non-empty interface")
+	}
+}
+
 func TestConvert(t *testing.T) {
 	v := ValueOf(int64(3))
 	c := v.Convert(TypeOf(byte(0)))
